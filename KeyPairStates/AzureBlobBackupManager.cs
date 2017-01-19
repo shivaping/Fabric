@@ -49,7 +49,7 @@ namespace KeyPairStates
         long IBackupStore.backupFrequencyInSeconds
         {
             get { return this.backupFrequencyInSeconds; }
-        }
+        } 
 
         public async Task ArchiveBackupAsync(BackupInfo backupInfo, CancellationToken cancellationToken)
         {
