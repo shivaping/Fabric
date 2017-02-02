@@ -12,6 +12,10 @@ using Microsoft.ServiceFabric.Services.Remoting.Runtime;
 using Microsoft.ServiceFabric.Data;
 using System.Fabric.Description;
 using System.IO;
+using System.Runtime.Serialization;
+using KeyPairStates.Utility;
+using System.Data.SqlClient;
+using System.Data;
 
 namespace KeyPairStates
 {
@@ -30,50 +34,37 @@ namespace KeyPairStates
             : base(context)
         { }
 
-        public async Task<UserKeyPair> GetPairs(Guid UserID)
+        #region Interface Implementation
+        public async Task<Dictionary<int, Pairs>> GetPairs(Guid UserID)
         {
-            IReliableDictionary<Guid, UserKeyPair> userKeyPairItems =
-               await this.StateManager.GetOrAddAsync<IReliableDictionary<Guid, UserKeyPair>>(KeyPairDictionaryName);
+            IReliableDictionary<Guid, Dictionary<int, Pairs>> userKeyPairItems = await this.StateManager.GetOrAddAsync<IReliableDictionary<Guid, Dictionary<int, Pairs>>>(KeyPairDictionaryName);
 
-            ConditionalValue<UserKeyPair> userKeyPair;
-            List<PairsPair> PairsPair1 = new List<KeyPair.Model.PairsPair>() { new PairsPair() { PairKey = "First", PairValue = "FirstValue", UpdateDate = DateTime.Now, UserInventoryId = 1 } };
-            List<PairsPair> PairsPair2 = new List<KeyPair.Model.PairsPair>() { new PairsPair() { PairKey = "Second", PairValue = "SecondValue", UpdateDate = DateTime.Now, UserInventoryId = 1 } };
+            ConditionalValue<Dictionary<int, Pairs>> userKeyPair;
+            //List<PairsPair> PairsPair1 = new List<KeyPair.Model.PairsPair>() { new PairsPair() { PairKey = "First", PairValue = "FirstValue", UpdateDate = DateTime.Now, UserInventoryId = 1 } };
+            //List<PairsPair> PairsPair2 = new List<KeyPair.Model.PairsPair>() { new PairsPair() { PairKey = "Second", PairValue = "SecondValue", UpdateDate = DateTime.Now, UserInventoryId = 1 } };
             using (ITransaction tx = this.StateManager.CreateTransaction())
             {
                 userKeyPair = await userKeyPairItems.TryGetValueAsync(tx, UserID);
-                //Not in state get from SQL
+                //Not in state get from SQL/SVC/API
                 if (!userKeyPair.HasValue)
-                    userKeyPair = new ConditionalValue<UserKeyPair>(true, new UserKeyPair()
-                    {
-                        Pairs = new List<Pairs>()
-                        {
-                            new Pairs()
-                            {
-                                Items = PairsPair1.ToArray(), PairID = 1
-                            },
-                              new Pairs()
-                            {
-                                Items = PairsPair2.ToArray(), PairID = 2
-                            }
-                        }
-                    });
-
-                if (userKeyPair.HasValue)
                 {
-                    //await userKeyPairItems.AddAsync(tx, UserID, userKeyPair);
+                    userKeyPair = new ConditionalValue<Dictionary<int, Pairs>>(true, LoadUserPairs(UserID));
                     await userKeyPairItems.SetAsync(tx, UserID, userKeyPair.Value);
-                    await tx.CommitAsync();
-                    ServiceEventSource.Current.ServiceMessage(this.Context, "Created userPair item: {0}", userKeyPair.Value);
+                    ServiceEventSource.Current.ServiceMessage(this.Context, "Created userPair item: {0}", Newtonsoft.Json.JsonConvert.SerializeObject(userKeyPair.Value));
                 }
+                else
+                {
+                    ServiceEventSource.Current.ServiceMessage(this.Context, "Retrieved userPair item: {0}", Newtonsoft.Json.JsonConvert.SerializeObject( userKeyPair.Value));
+                }
+                await tx.CommitAsync();
             }
 
             return userKeyPair.Value;
         }
+        #endregion
 
-        public Task<string> helloworld()
-        {
-            return Task.FromResult("Hello!");
-        }
+
+        #region Listeners
         /// <summary>
         /// Optional override to create listeners (e.g., HTTP, Service Remoting, WCF, etc.) for this service replica to handle client or user requests.
         /// </summary>
@@ -89,17 +80,55 @@ namespace KeyPairStates
                 new ServiceReplicaListener(context => this.CreateServiceRemotingListener(context))
             };
         }
+        #endregion
 
+        #region Load Data
+        private Dictionary<int, Pairs> LoadUserPairs(Guid userid)
+        {
+            Dictionary<int, Pairs> p = new Dictionary<int, Pairs>();
+
+            ICodePackageActivationContext codePackageContext = this.Context.CodePackageActivationContext;
+            ConfigurationPackage configPackage = codePackageContext.GetConfigurationPackageObject("Config");
+            ConfigurationSection configSection = configPackage.Settings.Sections["KeyPairStates.Settings"];
+            string dbSettingValue = configSection.Parameters["DBConnection"].Value;
+            using (SqlConnection con = new SqlConnection(dbSettingValue))
+            {
+                using (SqlCommand cmd = new SqlCommand("KAP_GetKeyValuePair_V1", con))
+                {
+
+                    cmd.CommandType = System.Data.CommandType.StoredProcedure;
+                    cmd.CommandText = "KAP_GetKeyValuePair_V1";
+                    cmd.Parameters.Add("@UserID", SqlDbType.UniqueIdentifier).Value = userid;
+                    con.Open();
+                    using (SqlDataReader dr = cmd.ExecuteReader())
+                    {
+                        while (dr.Read())
+                        {
+                            int pairID = int.Parse(dr["PairID"].ToString()); string PairKey = dr["PairKey"].ToString(); string PairValue = dr["PairValue"].ToString();
+                            if (!p.ContainsKey(pairID))
+                                p[pairID] = new Pairs() { Items = new List<PairsPair>() { new PairsPair() { PairKey = PairKey, PairValue = PairValue } } };
+                            else
+                                p[pairID].Items.Add(new PairsPair() { PairKey = PairKey, PairValue = PairValue });
+                        }
+                    }
+                }
+            }
+            return p;
+        }
+        #endregion
+
+        #region Main Method
         /// <summary>
         /// This is the main entry point for your service replica.
         /// This method executes when this replica of your service becomes primary and has write status.
         /// </summary>
         /// <param name="cancellationToken">Canceled when Service Fabric needs to shut down this service replica.</param>
+
         protected override Task RunAsync(CancellationToken cancellationToken)
         {
             try
             {
-                ServiceEventSource.Current.ServiceMessage(this.Context, "inside RunAsync for Inventory Service");
+                ServiceEventSource.Current.ServiceMessage(this.Context, "inside RunAsync for KeyPairState Service");
                 return Task.WhenAll(new List<Task>() { this.PeriodicTakeBackupAsync(cancellationToken) });
             }
             catch (Exception e)
@@ -109,6 +138,9 @@ namespace KeyPairStates
             }
 
         }
+        #endregion
+        
+        #region Back Up and Restore
         private async Task PeriodicTakeBackupAsync(CancellationToken cancellationToken)
         {
             long backupsTaken = 0;
@@ -123,6 +155,7 @@ namespace KeyPairStates
                 }
                 else
                 {
+                    ServiceEventSource.Current.ServiceMessage(this.Context, "Backup Initialized with a wait time of {0} seconds", this.backupManager.backupFrequencyInSeconds);
                     await Task.Delay(TimeSpan.FromSeconds(this.backupManager.backupFrequencyInSeconds));
                     BackupDescription backupDescription = new BackupDescription(BackupOption.Full, this.BackupCallbackAsync);
                     await this.BackupAsync(backupDescription, TimeSpan.FromHours(1), cancellationToken);
@@ -172,7 +205,6 @@ namespace KeyPairStates
                 throw;
             }
         }
-
         private void SetupBackupManager()
         {
             string partitionId = this.Context.PartitionId.ToString("N");
@@ -217,7 +249,7 @@ namespace KeyPairStates
         }
         private async Task<bool> BackupCallbackAsync(BackupInfo backupInfo, CancellationToken cancellationToken)
         {
-            ServiceEventSource.Current.ServiceMessage(this.Context, "Inside backup callback for replica {0}|{1}", this.Context.PartitionId, this.Context.ReplicaId);
+            // ServiceEventSource.Current.ServiceMessage(this.Context, "Inside backup callback for replica {0}|{1}", this.Context.PartitionId, this.Context.ReplicaId);
             long totalBackupCount;
 
             IReliableDictionary<string, long> backupCountDictionary =
@@ -239,23 +271,41 @@ namespace KeyPairStates
 
                 await tx.CommitAsync();
             }
+            IReliableDictionary<Guid, Pairs> userKeyPairItems =
+             await this.StateManager.GetOrAddAsync<IReliableDictionary<Guid, Pairs>>(KeyPairDictionaryName);
+            userKeyPairItems.ToString();
 
-            ServiceEventSource.Current.Message("Backup count dictionary updated, total backup count is {0}", totalBackupCount);
+
+            using (ITransaction tx = this.StateManager.CreateTransaction())
+            {
+                IAsyncEnumerable<KeyValuePair<Guid, Pairs>> asyncEnumerable = await userKeyPairItems.CreateEnumerableAsync(tx);
+                using (IAsyncEnumerator<KeyValuePair<Guid, Pairs>> asyncEnumerator = asyncEnumerable.GetAsyncEnumerator())
+                {
+                    int i = 0;
+                    while (await asyncEnumerator.MoveNextAsync(CancellationToken.None))
+                    {
+                        i++;
+
+                        ServiceEventSource.Current.Message("Object {0}, Key : {1}, Value : {2}", i, asyncEnumerator.Current.Key.ToString(), Newtonsoft.Json.JsonConvert.SerializeObject(asyncEnumerator.Current.Value.Items));
+                    }
+                }
+            }
+            //ServiceEventSource.Current.Message("Backup count dictionary updated, total backup count is {0}", totalBackupCount);
 
             try
             {
-                ServiceEventSource.Current.ServiceMessage(this.Context, "Archiving backup");
+                //ServiceEventSource.Current.ServiceMessage(this.Context, "Archiving backup");
                 await this.backupManager.ArchiveBackupAsync(backupInfo, cancellationToken);
-                ServiceEventSource.Current.ServiceMessage(this.Context, "Backup archived");
+                //ServiceEventSource.Current.ServiceMessage(this.Context, "Backup archived");
             }
             catch (Exception e)
             {
-                ServiceEventSource.Current.ServiceMessage(this.Context, "Archive of backup failed: Source: {0} Exception: {1}", backupInfo.Directory, e.Message);
+                // ServiceEventSource.Current.ServiceMessage(this.Context, "Archive of backup failed: Source: {0} Exception: {1}", backupInfo.Directory, e.Message);
             }
 
             await this.backupManager.DeleteBackupsAsync(cancellationToken);
 
-            ServiceEventSource.Current.Message("Backups deleted");
+            //ServiceEventSource.Current.Message("Backups deleted");
 
             return true;
         }
@@ -265,5 +315,8 @@ namespace KeyPairStates
             Local,
             None
         };
+
+        #endregion
+
     }
 }

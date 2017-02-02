@@ -17,57 +17,9 @@ namespace KeyPair.Model
 {
     public interface IUserKeyPair : IService
     {
-        Task<string> helloworld();
-        Task<UserKeyPair> GetPairs(Guid UserID);
+        Task<Dictionary<int, Pairs>> GetPairs(Guid UserID);
     }
-
-    [DataContract]
-    public class UserKeyPair 
-    {
-
-        [DataMember]
-        public Guid UserID { get; set; }
-        [DataMember]
-        public List<Pairs> Pairs { get; set; }
-
-        public ServicePartitionKey GetPartitionKey()
-        {
-            return new ServicePartitionKey(HashUtil.getLongHashCode(this.UserID.ToString()));
-        }
-      
-    }
-    [Serializable]
-    [XmlRoot(ElementName = "Pairs", Namespace = "", IsNullable = false)]
-    [DataContract(Name = "Pairs", Namespace = "")]
-    public class Pairs
-    {
-        [XmlElement(ElementName = "Pair")]
-        [DataMember(Name = "Items", IsRequired = true)]
-        public PairsPair[] Items { get; set; }
-
-        [XmlElement(ElementName = "PairID")]
-        [DataMember(Name = "PairID", IsRequired = true)]
-        public int PairID { get; set; }
-    }
-    [Serializable]
-    [XmlRoot(ElementName = "PairsPair", Namespace = "")]
-    [DataContract(Name = "PairsPair", Namespace = "")]
-    public class PairsPair
-    {
-        [XmlElement(ElementName = "PairKey")]
-        [DataMember(Name = "PairKey", IsRequired = true)]
-        public string PairKey { get; set; }
-
-        [XmlElement(ElementName = "PairValue")]
-        [DataMember(Name = "PairValue", IsRequired = true)]
-        public string PairValue { get; set; }
-
-        [XmlElement(ElementName = "UpdateDate")]
-        [DataMember(Name = "UpdateDate", IsRequired = false)]
-        public DateTime UpdateDate { get; set; }
-
-        public int UserInventoryId { get; set; }
-    }
+    
     public class HashUtil
     {
         public static long getLongHashCode(string stringInput)

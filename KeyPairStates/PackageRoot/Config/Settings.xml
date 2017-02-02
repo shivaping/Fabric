@@ -15,17 +15,18 @@
   -->
   <Section Name="KeyPairStates.Settings">
     <Parameter Name="BackupMode" Value="local" />
+    <Parameter Name="DBConnection" Value="Server=KA-V-QADB01; Database=ContentServer; user ID=development; password=d3v3l0pm3nt#; Application Name=CONTENT_SERVER_SERVICE_SERVER_QA;" />
   </Section>
   <Section Name="KeyPairStates.BackupSettings.Azure">
-    <Parameter Name="BackupAccountName" Value="" />
-    <Parameter Name="PrimaryKeyForBackupTestAccount" Value="" />
-    <Parameter Name="BlobServiceEndpointAddress" Value="" />
-    <Parameter Name="BackupFrequencyInSeconds" Value="30" />
-    <Parameter Name="MaxBackupsToKeep" Value="5" />
+    <Parameter Name="BackupAccountName" Value="todelete" />
+    <Parameter Name="PrimaryKeyForBackupTestAccount" Value="qLsMU0co+YtNFR6VAu8DDAAwxFclPcMc5Fp9vfMPzin4QjceegPPYXe4YW8v/J5fVhgQ8mlUH9q6HgkMkkllzQ==" />
+    <Parameter Name="BlobServiceEndpointAddress" Value="https://todelete.blob.core.windows.net/" />
+    <Parameter Name="BackupFrequencyInSeconds" Value="500" />
+    <Parameter Name="MaxBackupsToKeep" Value="500" />
   </Section>
   <Section Name="KeyPairStates.BackupSettings.Local">
     <Parameter Name="BackupArchivalPath" Value="E:\Sample" />
-    <Parameter Name="BackupFrequencyInSeconds" Value="10" />
-    <Parameter Name="MaxBackupsToKeep" Value="5" />
+    <Parameter Name="BackupFrequencyInSeconds" Value="500" />
+    <Parameter Name="MaxBackupsToKeep" Value="500" />
   </Section>
 </Settings>

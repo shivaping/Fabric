@@ -93,6 +93,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="IUserKeyPair.cs" />
+    <Compile Include="Model\Pairs.cs" />
+    <Compile Include="Model\PairsPair.cs" />
+    <Compile Include="Model\UserInventoryPairs.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
